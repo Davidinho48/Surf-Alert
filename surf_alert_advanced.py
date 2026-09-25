@@ -92,6 +92,8 @@ def check_spot(spot):
 
 def main():
     print("🚀 Avvio controllo avanzato onde (Open‑Meteo combinato)...")
+# 🔔 Messaggio di test
+send_alert("🔔 Test: il bot surf è attivo e funzionante!")
     for spot in SPOTS:
         check_spot(spot)
     print("🏁 Controllo completato.")
