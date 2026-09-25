@@ -2,14 +2,11 @@ import os
 import requests
 import datetime
 
-# 🔐 Secrets letti da GitHub Actions
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-WINDY_API_KEY = os.getenv("WINDY_API_KEY")
 
 # 📍 Spot configurati (Liguria + Toscana)
 SPOTS = [
-    # Liguria
     {
         "name": "Levanto",
         "lat": 44.17,
@@ -34,8 +31,6 @@ SPOTS = [
         "min_period": 7,
         "good_dirs": ["S", "SSW", "SW"]
     },
-
-    # Toscana
     {
         "name": "Varazze",
         "lat": 44.36,
@@ -71,49 +66,48 @@ SPOTS = [
 ]
 
 def send_alert(message):
-    """Invia un messaggio Telegram."""
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}
     requests.post(url, data=payload)
 
 def deg_to_dir(deg):
-    """Converte direzione in gradi → cardinali."""
     dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE",
             "S","SSW","SW","WSW","W","WNW","NW","NNW"]
     ix = int((deg + 11.25) / 22.5) % 16
     return dirs[ix]
 
 def get_forecast(lat, lon):
-    """Richiede le previsioni Windy Point Forecast API."""
-    url = f"https://api.windy.com/api/point-forecast/v2?lat={lat}&lon={lon}&model=gfs"
-    headers = {"x-api-key": WINDY_API_KEY}
-    response = requests.get(url, headers=headers)
+    url = (
+        "https://marine-api.open-meteo.com/v1/marine?"
+        f"latitude={lat}&longitude={lon}"
+        "&hourly=wave_height,wave_direction,wave_period,wind_speed,wind_direction"
+    )
+    response = requests.get(url)
     return response.json()
 
 def check_spot(spot):
-    """Controlla onde surfabili entro 48–72 ore con parametri avanzati."""
     print(f"🔍 Controllo spot: {spot['name']}")
 
     data = get_forecast(spot["lat"], spot["lon"])
+    hourly = data["hourly"]
 
-    heights = data["waves"]["height"]
-    periods = data["waves"]["period"]
-    dirs = data["waves"]["direction"]
-    wind_speed = data["wind"]["speed"]
-    wind_dir = data["wind"]["direction"]
-    timestamps = data["ts"]
+    heights = hourly["wave_height"]
+    periods = hourly["wave_period"]
+    dirs = hourly["wave_direction"]
+    wind_speed = hourly["wind_speed"]
+    wind_dir = hourly["wind_direction"]
+    timestamps = hourly["time"]
 
     now = datetime.datetime.utcnow()
 
     for h, p, d, ws, wd, ts in zip(heights, periods, dirs, wind_speed, wind_dir, timestamps):
-        forecast_time = datetime.datetime.utcfromtimestamp(ts)
+        forecast_time = datetime.datetime.fromisoformat(ts)
         hours_ahead = (forecast_time - now).total_seconds() / 3600
 
         if 48 <= hours_ahead <= 72:
             swell_dir = deg_to_dir(d)
             wind_dir_card = deg_to_dir(wd)
 
-            # 🌬️ Vento offshore = vento opposto alla direzione del swell
             offshore = (
                 (swell_dir.startswith("W") and wind_dir_card.startswith("E")) or
                 (swell_dir.startswith("E") and wind_dir_card.startswith("W")) or
@@ -121,23 +115,22 @@ def check_spot(spot):
                 (swell_dir.startswith("N") and wind_dir_card.startswith("S"))
             )
 
-            # 🎯 Condizioni surfabili avanzate
             good_height = h >= spot["min_height"]
             good_period = p >= spot["min_period"]
             good_direction = swell_dir in spot["good_dirs"]
-            good_wind = offshore and ws <= 12  # vento leggero offshore
+            good_wind = offshore and ws <= 12
 
             if good_height and good_period and good_direction and good_wind:
                 message = (
                     f"🌊 *Onde in arrivo a {spot['name']}!*\n"
-                    f"📏 Altezza: *{h} m*\n"
-                    f"⏱️ Periodo: *{p} s*\n"
+                    f"📏 Altezza: *{h:.2f} m*\n"
+                    f"⏱️ Periodo: *{p:.1f} s*\n"
                     f"🧭 Swell: *{swell_dir}*\n"
                     f"💨 Vento: *{wind_dir_card}* ({ws} kt) "
                     f"{'*OFFSHORE*' if offshore else 'onshore'}\n"
                     f"📅 {forecast_time.strftime('%A %d %B alle %H:%M')}\n"
                     f"⏳ Previsione entro *{int(hours_ahead)} ore*\n"
-                    f"✔️ *Condizioni surfabili (modello avanzato)*"
+                    f"✔️ *Condizioni surfabili (modello Open‑Meteo)*"
                 )
                 send_alert(message)
                 print(f"✔️ Notifica inviata per {spot['name']}")
@@ -145,7 +138,7 @@ def check_spot(spot):
                 print(f"❌ {spot['name']} non surfabile (48–72h)")
 
 def main():
-    print("🚀 Avvio controllo avanzato onde Liguria + Toscana...")
+    print("🚀 Avvio controllo avanzato onde (Open‑Meteo)...")
     for spot in SPOTS:
         check_spot(spot)
     print("🏁 Controllo completato.")
