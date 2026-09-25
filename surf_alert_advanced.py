@@ -5,98 +5,54 @@ import datetime
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-# 📍 Spot configurati (Liguria + Toscana)
 SPOTS = [
-    {
-        "name": "Levanto",
-        "lat": 44.17,
-        "lon": 9.61,
-        "min_height": 0.8,
-        "min_period": 7,
-        "good_dirs": ["W", "SW", "WSW", "SSW"]
-    },
-    {
-        "name": "Recco",
-        "lat": 44.36,
-        "lon": 9.15,
-        "min_height": 1.2,
-        "min_period": 8,
-        "good_dirs": ["W", "SW", "WSW"]
-    },
-    {
-        "name": "Marinella di Sarzana",
-        "lat": 44.07,
-        "lon": 9.97,
-        "min_height": 0.7,
-        "min_period": 7,
-        "good_dirs": ["S", "SSW", "SW"]
-    },
-    {
-        "name": "Varazze",
-        "lat": 44.36,
-        "lon": 8.59,
-        "min_height": 1.0,
-        "min_period": 8,
-        "good_dirs": ["SW", "WSW", "W"]
-    },
-    {
-        "name": "Marina di Pisa",
-        "lat": 43.55,
-        "lon": 10.28,
-        "min_height": 0.7,
-        "min_period": 7,
-        "good_dirs": ["SW", "W", "WSW"]
-    },
-    {
-        "name": "Viareggio",
-        "lat": 43.87,
-        "lon": 10.24,
-        "min_height": 0.7,
-        "min_period": 7,
-        "good_dirs": ["SW", "W", "WSW"]
-    },
-    {
-        "name": "Forte dei Marmi",
-        "lat": 43.96,
-        "lon": 10.17,
-        "min_height": 0.7,
-        "min_period": 7,
-        "good_dirs": ["SW", "W", "WSW"]
-    }
+    {"name": "Levanto", "lat": 44.17, "lon": 9.61, "min_height": 0.8, "min_period": 7, "good_dirs": ["W","SW","WSW","SSW"]},
+    {"name": "Recco", "lat": 44.36, "lon": 9.15, "min_height": 1.2, "min_period": 8, "good_dirs": ["W","SW","WSW"]},
 ]
 
 def send_alert(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}
-    requests.post(url, data=payload)
+    requests.post(url, data={"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"})
 
 def deg_to_dir(deg):
-    dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE",
-            "S","SSW","SW","WSW","W","WNW","NW","NNW"]
-    ix = int((deg + 11.25) / 22.5) % 16
-    return dirs[ix]
+    dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"]
+    return dirs[int((deg + 11.25) / 22.5) % 16]
 
-def get_forecast(lat, lon):
+def get_marine(lat, lon):
     url = (
         "https://marine-api.open-meteo.com/v1/marine?"
         f"latitude={lat}&longitude={lon}"
-        "&hourly=wave_height,wave_direction,wave_period,wind_speed,wind_direction"
+        "&hourly=wave_height,wave_direction,wave_period"
     )
-    response = requests.get(url)
-    return response.json()
+    return requests.get(url).json()
+
+def get_weather(lat, lon):
+    url = (
+        "https://api.open-meteo.com/v1/forecast?"
+        f"latitude={lat}&longitude={lon}"
+        "&hourly=wind_speed_10m,wind_direction_10m"
+    )
+    return requests.get(url).json()
 
 def check_spot(spot):
     print(f"🔍 Controllo spot: {spot['name']}")
 
-    data = get_forecast(spot["lat"], spot["lon"])
-    hourly = data["hourly"]
+    marine = get_marine(spot["lat"], spot["lon"])
+    weather = get_weather(spot["lat"], spot["lon"])
 
-    heights = hourly["wave_height"]
-    periods = hourly["wave_period"]
-    dirs = hourly["wave_direction"]
-    wind_speed = hourly["wind_speed"]
-    wind_dir = hourly["wind_direction"]
-    timestamps = hourly["time"]
+    if "hourly" not in marine or "hourly" not in weather:
+        print(f"⚠️ Nessun dato disponibile per {spot['name']}")
+        return
+
+    m = marine["hourly"]
+    w = weather["hourly"]
+
+    heights = m["wave_height"]
+    periods = m["wave_period"]
+    dirs = m["wave_direction"]
+    wind_speed = w["wind_speed_10m"]
+    wind_dir = w["wind_direction_10m"]
+    timestamps = m["time"]
 
     now = datetime.datetime.utcnow()
 
@@ -121,24 +77,21 @@ def check_spot(spot):
             good_wind = offshore and ws <= 12
 
             if good_height and good_period and good_direction and good_wind:
-                message = (
+                send_alert(
                     f"🌊 *Onde in arrivo a {spot['name']}!*\n"
                     f"📏 Altezza: *{h:.2f} m*\n"
                     f"⏱️ Periodo: *{p:.1f} s*\n"
                     f"🧭 Swell: *{swell_dir}*\n"
-                    f"💨 Vento: *{wind_dir_card}* ({ws} kt) "
-                    f"{'*OFFSHORE*' if offshore else 'onshore'}\n"
+                    f"💨 Vento: *{wind_dir_card}* ({ws} kt) {'OFFSHORE' if offshore else 'onshore'}\n"
                     f"📅 {forecast_time.strftime('%A %d %B alle %H:%M')}\n"
-                    f"⏳ Previsione entro *{int(hours_ahead)} ore*\n"
-                    f"✔️ *Condizioni surfabili (modello Open‑Meteo)*"
+                    f"⏳ Previsione entro *{int(hours_ahead)} ore*"
                 )
-                send_alert(message)
                 print(f"✔️ Notifica inviata per {spot['name']}")
             else:
                 print(f"❌ {spot['name']} non surfabile (48–72h)")
 
 def main():
-    print("🚀 Avvio controllo avanzato onde (Open‑Meteo)...")
+    print("🚀 Avvio controllo avanzato onde (Open‑Meteo combinato)...")
     for spot in SPOTS:
         check_spot(spot)
     print("🏁 Controllo completato.")
