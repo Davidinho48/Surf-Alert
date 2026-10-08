@@ -118,78 +118,76 @@ def check_spot(spot):
     alert_sent = False
 
     for h, p, d, ws, wd, ts in zip(
-        m["wave_height"],
-        m["wave_period"],
-        m["wave_direction"],
-        w["wind_speed_10m"],
-        w["wind_direction_10m"],
-        m["time"]
+    m["wave_height"],
+    m["wave_period"],
+    m["wave_direction"],
+    w["wind_speed_10m"],
+    w["wind_direction_10m"],
+    m["time"]
+):
+
+    try:
+        forecast_time = datetime.datetime.fromisoformat(
+            ts.replace("Z", "")
+        )
+    except Exception:
+        continue
+
+    hours_ahead = (
+        forecast_time - datetime.datetime.utcnow()
+    ).total_seconds() / 3600
+
+    if not (48 <= hours_ahead <= 72):
+        continue
+
+    swell_dir = deg_to_dir(d)
+    wind_dir = deg_to_dir(wd)
+
+    ws_kt = ws * 0.539957
+
+    offshore = (
+        (swell_dir.startswith("W") and wind_dir.startswith("E"))
+        or
+        (swell_dir.startswith("E") and wind_dir.startswith("W"))
+        or
+        (swell_dir.startswith("N") and wind_dir.startswith("S"))
+        or
+        (swell_dir.startswith("S") and wind_dir.startswith("N"))
+    )
+
+    good_height = h >= spot["min_height"]
+    good_period = p >= spot["min_period"]
+    good_direction = swell_dir in spot["good_dirs"]
+    good_wind = offshore and ws_kt <= 12
+
+    print(
+        f"{spot['name']} | "
+        f"{forecast_time} | "
+        f"H={h:.2f}m | "
+        f"P={p:.1f}s | "
+        f"{swell_dir} | "
+        f"WIND={wind_dir} {ws_kt:.1f}kt"
+    )
+
+    if (
+        good_height
+        and good_period
+        and good_direction
+        and good_wind
     ):
 
-        forecast_time = datetime.datetime.fromisoformat(
-            ts.replace("Z", "+00:00")
+        send_alert(
+            f"🌊 *Surf Alert - {spot['name']}*\n\n"
+            f"📏 Altezza: *{h:.2f} m*\n"
+            f"⏱️ Periodo: *{p:.1f} s*\n"
+            f"🧭 Swell: *{swell_dir}*\n"
+            f"💨 Vento: *{wind_dir}* ({ws_kt:.1f} kt)\n"
+            f"📅 {forecast_time.strftime('%d/%m/%Y %H:%M')}\n"
+            f"⏳ Tra circa *{int(hours_ahead)} ore*"
         )
 
-        hours_ahead = (
-            forecast_time - now
-        ).total_seconds() / 3600
-
-        if not (48 <= hours_ahead <= 72):
-            continue
-
-        swell_dir = deg_to_dir(d)
-        wind_dir = deg_to_dir(wd)
-
-        ws_kt = ws * 0.539957
-
-        offshore = (
-            (swell_dir.startswith("W") and wind_dir.startswith("E"))
-            or
-            (swell_dir.startswith("E") and wind_dir.startswith("W"))
-            or
-            (swell_dir.startswith("N") and wind_dir.startswith("S"))
-            or
-            (swell_dir.startswith("S") and wind_dir.startswith("N"))
-        )
-
-        good_height = h >= spot["min_height"]
-        good_period = p >= spot["min_period"]
-        good_direction = swell_dir in spot["good_dirs"]
-        good_wind = offshore and ws_kt <= 12
-
-        print(
-            f"{forecast_time} "
-            f"H={h:.1f}m "
-            f"P={p:.1f}s "
-            f"SWELL={swell_dir} "
-            f"WIND={wind_dir} "
-            f"{ws_kt:.1f}kt"
-        )
-
-        if (
-            good_height and
-            good_period and
-            good_direction and
-            good_wind
-        ):
-
-            message = (
-                f"🌊 *Surf Alert - {spot['name']}*\n\n"
-                f"📏 Altezza onde: *{h:.2f} m*\n"
-                f"⏱️ Periodo: *{p:.1f} s*\n"
-                f"🧭 Swell: *{swell_dir}*\n"
-                f"💨 Vento: *{wind_dir}* ({ws_kt:.1f} kt)\n"
-                f"✅ Offshore\n\n"
-                f"📅 {forecast_time.strftime('%d/%m %H:%M UTC')}\n"
-                f"⏳ Tra circa *{int(hours_ahead)} ore*"
-            )
-
-            send_alert(message)
-
-            print(f"✅ Alert inviato per {spot['name']}")
-
-            alert_sent = True
-            break
+        print(f"✅ Alert inviato per {spot['name']}")
+        break
 
     if not alert_sent:
         print(f"❌ Nessuna condizione valida per {spot['name']}")
