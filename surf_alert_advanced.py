@@ -11,8 +11,20 @@ SPOTS = [
 ]
 
 def send_alert(message):
+    #url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    #requests.post(url, data={"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"})
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    requests.post(url, data={"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"})
+
+    r = requests.post(
+        url,
+        data={
+            "chat_id": CHAT_ID,
+            "text": message
+        }
+    )
+
+    print(r.status_code)
+    print(r.text)
 
 def deg_to_dir(deg):
     dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"]
@@ -95,7 +107,8 @@ def main():
     #for spot in SPOTS:
         #check_spot(spot)
     #print("🏁 Controllo completato.")
-    send_alert("✅ Test Telegram")
+    send_alert("✅ TEST DA GITHUB")
+    print("TEST FINITO")
 
 if __name__ == "__main__":
     main()
