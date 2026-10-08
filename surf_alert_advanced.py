@@ -91,11 +91,10 @@ def check_spot(spot):
                 print(f"❌ {spot['name']} non surfabile (48–72h)")
 
 def main():
-    #print("🚀 Avvio controllo avanzato onde (Open‑Meteo combinato)...")
-    #for spot in SPOTS:
-        #check_spot(spot)
-    #print("🏁 Controllo completato.")
-    send_alert("✅ Test Telegram da GitHub riuscito!")
-
+    print("🚀 Avvio controllo avanzato onde (Open‑Meteo combinato)...")
+    for spot in SPOTS:
+        check_spot(spot)
+    print("🏁 Controllo completato.")
+    
 if __name__ == "__main__":
     main()
